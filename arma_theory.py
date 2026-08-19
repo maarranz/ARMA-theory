@@ -178,7 +178,7 @@ def arma_psi_weights(
     ma: Iterable[Real] | None,
     n_terms: int = 20,
 ) -> np.ndarray:
-    """Compute coefficients of a causal ARMA model's infinite MA form.
+    """Compute the formal psi-weight recursion for an ARMA model.
 
     For ``psi(L) = theta(L) / phi(L)``, the recursion is
 
@@ -204,10 +204,19 @@ def arma_psi_weights(
     numpy.ndarray
         ``[psi_0, psi_1, ..., psi_(n_terms-1)]``.
 
+    Notes
+    -----
+    The recursion is computed for any finite AR and MA coefficients. For a
+    causal model, the returned sequence gives the coefficients of its
+    convergent infinite MA representation. For a unit-root or explosive
+    model, the same formal recursion is useful for displaying the model's
+    non-decaying or explosive dynamic response, but it must not be interpreted
+    as a convergent infinite MA representation.
+
     Raises
     ------
     ValueError
-        If ``n_terms`` is invalid or the AR polynomial is not causal.
+        If ``n_terms`` or the supplied coefficients are invalid.
     """
     if (
         isinstance(n_terms, (bool, np.bool_))
@@ -218,13 +227,6 @@ def arma_psi_weights(
 
     ar_values = _validate_coefficients(ar, "ar")
     ma_values = _validate_coefficients(ma, "ma")
-    diagnostics = arma_diagnostics(ar_values, ma_values)
-
-    if not diagnostics["causal"]:
-        raise ValueError(
-            "The AR polynomial is not causal; a convergent infinite MA "
-            "representation does not exist."
-        )
 
     psi = np.zeros(int(n_terms), dtype=float)
     psi[0] = 1.0
@@ -301,6 +303,14 @@ def arma_autocovariances(
             "innovation_variance must be strictly positive."
         )
 
+    diagnostics = arma_diagnostics(ar=ar, ma=ma)
+
+    if not diagnostics["causal"]:
+        raise ValueError(
+            "The theoretical autocovariances are defined only for causal "
+            "ARMA models."
+        )
+
     psi = arma_psi_weights(
         ar=ar,
         ma=ma,
@@ -346,7 +356,19 @@ def arma_acf(
     -------
     numpy.ndarray
         Theoretical autocorrelations from lag 0 through `n_lags`.
+
+    Raises
+    ------
+    ValueError
+        If the supplied ARMA model is not causal.
     """
+    diagnostics = arma_diagnostics(ar=ar, ma=ma)
+
+    if not diagnostics["causal"]:
+        raise ValueError(
+            "The theoretical ACF is defined only for causal ARMA models."
+        )
+
     gamma = arma_autocovariances(
         ar=ar,
         ma=ma,
@@ -416,6 +438,14 @@ def arma_pacf(
 
         if ma is None:
             ma = []
+
+        diagnostics = arma_diagnostics(ar=ar, ma=ma)
+
+        if not diagnostics["causal"]:
+            raise ValueError(
+                "The theoretical PACF is defined only for causal ARMA "
+                "models."
+            )
 
         rho = arma_acf(
             ar=ar,
@@ -823,6 +853,330 @@ def plot_arma_correlations(
     return fig, axes
 
 
+def arma_dynamics(
+    ar,
+    ma,
+    horizon=20,
+):
+    """
+    Analyse the dynamic response of an ARMA model through its psi-weights.
+
+    The ARMA model is
+
+        phi(L) y_t = theta(L) epsilon_t,
+
+    with infinite-MA representation
+
+        y_t = sum_{j=0}^infinity psi_j epsilon_{t-j}.
+
+    The psi-weights measure the response of y_{t+j} to a one-unit
+    innovation epsilon_t.
+
+    Parameters
+    ----------
+    ar : array-like
+        Autoregressive coefficients [phi_1, ..., phi_p].
+
+    ma : array-like
+        Moving-average coefficients [theta_1, ..., theta_q].
+
+    horizon : int, default=20
+        Maximum response horizon. The returned psi sequence contains
+        horizons 0 through `horizon`.
+
+    Returns
+    -------
+    dict
+        Dictionary containing
+
+        - ``psi`` : psi-weights from horizon 0 to `horizon`
+        - ``cumulative_psi`` : cumulative sum of psi-weights
+        - ``causal`` : whether the AR polynomial is causal
+        - ``long_run_exists`` : whether a finite long-run response exists
+        - ``long_run_response`` : analytical long-run response if causal,
+          otherwise None
+        - ``horizon`` : maximum horizon used
+
+    Notes
+    -----
+    For a causal ARMA model,
+
+        sum psi_j = theta(1) / phi(1).
+
+    For a noncausal model, no finite long-run response is reported.
+    The finite-horizon psi-weights and cumulative responses are still
+    returned for diagnostic and teaching purposes.
+    """
+    if not isinstance(horizon, (int, np.integer)) or isinstance(horizon, bool):
+        raise ValueError("horizon must be a non-negative integer.")
+
+    if horizon < 0:
+        raise ValueError("horizon must be a non-negative integer.")
+
+    ar = np.asarray(ar, dtype=float)
+    ma = np.asarray(ma, dtype=float)
+
+    diagnostics = arma_diagnostics(ar=ar, ma=ma)
+
+    psi = arma_psi_weights(
+        ar=ar,
+        ma=ma,
+        n_terms=horizon + 1,
+    )
+
+    cumulative_psi = np.cumsum(psi)
+
+    causal = diagnostics["causal"]
+
+    if causal:
+        phi_at_one = 1.0 - np.sum(ar)
+        theta_at_one = 1.0 + np.sum(ma)
+
+        long_run_response = theta_at_one / phi_at_one
+        long_run_exists = True
+    else:
+        long_run_response = None
+        long_run_exists = False
+
+    return {
+        "psi": psi,
+        "cumulative_psi": cumulative_psi,
+        "causal": causal,
+        "long_run_exists": long_run_exists,
+        "long_run_response": long_run_response,
+        "horizon": horizon,
+    }
+
+def plot_arma_dynamic_response(
+    ar,
+    ma,
+    horizon=20,
+):
+    """
+    Plot the psi-weights of an ARMA model.
+
+    The psi-weights show the dynamic response of the process to a
+    one-unit innovation.
+
+    Parameters
+    ----------
+    ar : array-like
+        Autoregressive coefficients.
+
+    ma : array-like
+        Moving-average coefficients.
+
+    horizon : int, default=20
+        Maximum response horizon.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        Matplotlib figure.
+
+    ax : matplotlib.axes.Axes
+        Matplotlib axes.
+    """
+    import matplotlib.pyplot as plt
+
+    results = arma_dynamics(
+        ar=ar,
+        ma=ma,
+        horizon=horizon,
+    )
+
+    psi = results["psi"]
+    horizons = np.arange(horizon + 1)
+
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+
+    ax.vlines(
+        horizons,
+        0,
+        psi,
+        linewidth=1.5,
+    )
+
+    ax.scatter(
+        horizons,
+        psi,
+        s=30,
+        zorder=3,
+    )
+
+    ax.axhline(
+        y=0,
+        linewidth=1,
+    )
+
+    ax.set_title("Dynamic Response to a Unit Innovation")
+    ax.set_xlabel("Horizon")
+    ax.set_ylabel(r"$\psi_j$")
+
+    ax.set_xlim(-0.5, horizon + 0.5)
+    ax.set_xticks(horizons)
+
+    ax.grid(axis="y", alpha=0.3)
+
+    fig.tight_layout()
+
+    return fig, ax
+
+
+def plot_arma_cumulative_response(
+    ar,
+    ma,
+    horizon=20,
+):
+    """
+    Plot the cumulative psi-response of an ARMA model.
+
+    Parameters
+    ----------
+    ar : array-like
+        Autoregressive coefficients.
+
+    ma : array-like
+        Moving-average coefficients.
+
+    horizon : int, default=20
+        Maximum response horizon.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        Matplotlib figure.
+
+    ax : matplotlib.axes.Axes
+        Matplotlib axes.
+    """
+    import matplotlib.pyplot as plt
+
+    results = arma_dynamics(
+        ar=ar,
+        ma=ma,
+        horizon=horizon,
+    )
+
+    cumulative = results["cumulative_psi"]
+    horizons = np.arange(horizon + 1)
+
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+
+    ax.plot(
+        horizons,
+        cumulative,
+        marker="o",
+    )
+
+    if results["long_run_exists"]:
+        ax.axhline(
+            results["long_run_response"],
+            linestyle="--",
+            linewidth=1.2,
+            label="Long-run response",
+        )
+        ax.legend()
+
+    ax.set_title("Cumulative Response to a Unit Innovation")
+    ax.set_xlabel("Horizon")
+    ax.set_ylabel(r"$\sum_{i=0}^{j}\psi_i$")
+
+    ax.set_xlim(-0.5, horizon + 0.5)
+    ax.set_xticks(horizons)
+
+    ax.grid(axis="y", alpha=0.3)
+
+    fig.tight_layout()
+
+    return fig, ax
+
+
+def arma_summary(results):
+    """
+    Print a compact summary of ARMA dynamic-response results.
+
+    Parameters
+    ----------
+    results : dict
+        Dictionary returned by `arma_dynamics()`.
+
+    Returns
+    -------
+    None
+        The function prints a summary table and does not return a value.
+    """
+    required_keys = {
+        "psi",
+        "cumulative_psi",
+        "causal",
+        "long_run_exists",
+        "long_run_response",
+        "horizon",
+    }
+
+    missing = required_keys.difference(results)
+
+    if missing:
+        raise ValueError(
+            "results is missing required keys: "
+            + ", ".join(sorted(missing))
+        )
+
+    psi = np.asarray(results["psi"], dtype=float)
+    cumulative = np.asarray(
+        results["cumulative_psi"],
+        dtype=float,
+    )
+
+    if len(psi) != len(cumulative):
+        raise ValueError(
+            "psi and cumulative_psi must have the same length."
+        )
+
+    print("ARMA Dynamic Analysis")
+    print("=" * 42)
+    print()
+
+    print(
+        f"Causal model ............. "
+        f"{results['causal']}"
+    )
+
+    if results["long_run_exists"]:
+        print(
+            f"Long-run response ........ "
+            f"{results['long_run_response']:.6f}"
+        )
+    else:
+        print(
+            "Long-run response ........ "
+            "Not defined"
+        )
+
+    print(
+        f"Analysis horizon ......... "
+        f"{results['horizon']}"
+    )
+
+    print()
+    print(
+        f"{'Horizon':>8} "
+        f"{'psi_j':>12} "
+        f"{'Cumulative psi':>16}"
+    )
+    print("-" * 38)
+
+    for j, (psi_j, cumulative_j) in enumerate(
+        zip(psi, cumulative)
+    ):
+        print(
+            f"{j:8d} "
+            f"{psi_j:12.4f} "
+            f"{cumulative_j:16.4f}"
+        )
+
+
 __all__ = [
     "arma_diagnostics",
     "arma_psi_weights",
@@ -832,4 +1186,8 @@ __all__ = [
     "plot_arma_acf",
     "plot_arma_pacf",
     "plot_arma_correlations",
+    "arma_dynamics",
+    "plot_arma_dynamic_response",
+    "plot_arma_cumulative_response",
+    "arma_summary",
 ]
