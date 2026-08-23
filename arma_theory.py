@@ -1,68 +1,59 @@
-"""Theoretical tools for autoregressive moving-average (ARMA) models.
+"""Theoretical analysis and visualization tools for ARMA models.
 
 The module uses the convention
 
-    y_t = phi_1 y_{t-1} + ... + phi_p y_{t-p}
-          + epsilon_t
-          + theta_1 epsilon_{t-1} + ... + theta_q epsilon_{t-q}.
-
-Equivalently,
-
     phi(L) y_t = theta(L) epsilon_t,
 
-where
-
-    phi(L) = 1 - phi_1 L - ... - phi_p L^p
-    theta(L) = 1 + theta_1 L + ... + theta_q L^q.
+where ``phi(L) = 1 - phi_1 L - ... - phi_p L**p`` and
+``theta(L) = 1 + theta_1 L + ... + theta_q L**q``.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from numbers import Real
 
+import matplotlib.pyplot as plt
 import numpy as np
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 
 def _validate_coefficients(
-    coefficients: Iterable[Real] | None,
-    name: str,
+    coefficients: Iterable[Real] | None, name: str
 ) -> np.ndarray:
-    """Return a validated one-dimensional array of finite coefficients."""
+    """Return coefficients as a finite, one-dimensional float array."""
     if coefficients is None:
         return np.array([], dtype=float)
-
     if isinstance(coefficients, (str, bytes)):
         raise TypeError(f"{name} must be a one-dimensional sequence of numbers.")
-
     try:
         values = np.asarray(coefficients, dtype=float)
     except (TypeError, ValueError) as exc:
-        raise TypeError(
-            f"{name} must be a one-dimensional sequence of real numbers."
-        ) from exc
-
+        raise TypeError(f"{name} must be a sequence of real numbers.") from exc
     if values.ndim != 1:
         raise ValueError(f"{name} must be one-dimensional.")
-
     if not np.all(np.isfinite(values)):
         raise ValueError(f"{name} coefficients must all be finite.")
-
     return values
 
 
+def _validate_nonnegative_integer(value: object, name: str) -> int:
+    if (
+        isinstance(value, (bool, np.bool_))
+        or not isinstance(value, (int, np.integer))
+        or value < 0
+    ):
+        raise ValueError(f"{name} must be a non-negative integer.")
+    return int(value)
+
+
 def _polynomial_roots(coefficients: np.ndarray) -> np.ndarray:
-    """Find roots when coefficients are ordered by ascending powers."""
-    if coefficients.size <= 1:
+    """Find polynomial roots when coefficients use ascending powers."""
+    nonzero = np.flatnonzero(coefficients != 0.0)
+    if nonzero.size == 0 or nonzero[-1] == 0:
         return np.array([], dtype=complex)
-
-    # Remove zero coefficients at the highest powers. They do not affect the
-    # polynomial and would otherwise cause NumPy to report spurious behaviour.
-    last_nonzero = np.flatnonzero(coefficients != 0.0)
-    if last_nonzero.size == 0 or last_nonzero[-1] == 0:
-        return np.array([], dtype=complex)
-
-    effective = coefficients[: last_nonzero[-1] + 1]
+    effective = coefficients[: nonzero[-1] + 1]
     return np.asarray(np.roots(effective[::-1]), dtype=complex)
 
 
@@ -71,39 +62,9 @@ def arma_diagnostics(
     ma: Iterable[Real] | None,
     root_tolerance: float = 1e-6,
 ) -> dict:
-    """Diagnose the polynomial properties of an ARMA model.
-
-    Parameters
-    ----------
-    ar
-        Autoregressive coefficients ``[phi_1, ..., phi_p]``. Use an empty
-        sequence for a pure MA model.
-    ma
-        Moving-average coefficients ``[theta_1, ..., theta_q]``. Use an empty
-        sequence for a pure AR model.
-    root_tolerance
-        Positive relative tolerance used both for unit-circle classification
-        and approximate common-root detection.
-
-    Returns
-    -------
-    dict
-        Model order, validated coefficients, polynomial coefficients, roots,
-        inverse roots, causality, invertibility, and common-root diagnostics.
-
-    Notes
-    -----
-    Polynomial coefficients are returned in ascending powers of the lag:
-    ``[1, -phi_1, ..., -phi_p]`` and
-    ``[1, theta_1, ..., theta_q]``.
-
-    A root whose modulus is within ``root_tolerance`` of one is treated as
-    lying on the unit circle, so it does not satisfy the strict causality or
-    invertibility condition.
-    """
+    """Return roots and diagnostic properties of an ARMA specification."""
     ar_values = _validate_coefficients(ar, "ar")
     ma_values = _validate_coefficients(ma, "ma")
-
     if (
         isinstance(root_tolerance, (bool, np.bool_))
         or not isinstance(root_tolerance, Real)
@@ -111,36 +72,29 @@ def arma_diagnostics(
         or root_tolerance <= 0
     ):
         raise ValueError("root_tolerance must be a positive finite number.")
-
-    root_tolerance = float(root_tolerance)
+    tolerance = float(root_tolerance)
     ar_polynomial = np.concatenate(([1.0], -ar_values))
     ma_polynomial = np.concatenate(([1.0], ma_values))
-
     ar_roots = _polynomial_roots(ar_polynomial)
     ma_roots = _polynomial_roots(ma_polynomial)
-
     inverse_ar_roots = (
         1.0 / ar_roots if ar_roots.size else np.array([], dtype=complex)
     )
     inverse_ma_roots = (
         1.0 / ma_roots if ma_roots.size else np.array([], dtype=complex)
     )
-
     causal = bool(
-        ar_roots.size == 0
-        or np.all(np.abs(ar_roots) > 1.0 + root_tolerance)
+        ar_roots.size == 0 or np.all(np.abs(ar_roots) > 1.0 + tolerance)
     )
     invertible = bool(
-        ma_roots.size == 0
-        or np.all(np.abs(ma_roots) > 1.0 + root_tolerance)
+        ma_roots.size == 0 or np.all(np.abs(ma_roots) > 1.0 + tolerance)
     )
-
     common_root_pairs = []
     for ar_index, ar_root in enumerate(ar_roots):
         for ma_index, ma_root in enumerate(ma_roots):
             scale = max(1.0, abs(ar_root), abs(ma_root))
             relative_distance = abs(ar_root - ma_root) / scale
-            if relative_distance < root_tolerance:
+            if relative_distance <= tolerance:
                 common_root_pairs.append(
                     {
                         "ar_index": ar_index,
@@ -150,9 +104,7 @@ def arma_diagnostics(
                         "relative_distance": float(relative_distance),
                     }
                 )
-
     common_roots = bool(common_root_pairs)
-
     return {
         "order": (ar_values.size, ma_values.size),
         "ar": ar_values.copy(),
@@ -169,7 +121,7 @@ def arma_diagnostics(
         "common_roots": common_roots,
         "common_root_pairs": common_root_pairs,
         "minimal_representation": not common_roots,
-        "root_tolerance": root_tolerance,
+        "root_tolerance": tolerance,
     }
 
 
@@ -178,782 +130,342 @@ def arma_psi_weights(
     ma: Iterable[Real] | None,
     n_terms: int = 20,
 ) -> np.ndarray:
-    """Compute the formal psi-weight recursion for an ARMA model.
-
-    For ``psi(L) = theta(L) / phi(L)``, the recursion is
-
-    ``psi_0 = 1``
-
-    and, for ``j >= 1``,
-
-    ``psi_j = theta_j + sum(phi_i * psi_(j-i), i=1,...,min(p,j))``,
-
-    where ``theta_j = 0`` when ``j`` exceeds the MA order.
-
-    Parameters
-    ----------
-    ar
-        Autoregressive coefficients ``[phi_1, ..., phi_p]``.
-    ma
-        Moving-average coefficients ``[theta_1, ..., theta_q]``.
-    n_terms
-        Number of weights to return, including ``psi_0``.
-
-    Returns
-    -------
-    numpy.ndarray
-        ``[psi_0, psi_1, ..., psi_(n_terms-1)]``.
-
-    Notes
-    -----
-    The recursion is computed for any finite AR and MA coefficients. For a
-    causal model, the returned sequence gives the coefficients of its
-    convergent infinite MA representation. For a unit-root or explosive
-    model, the same formal recursion is useful for displaying the model's
-    non-decaying or explosive dynamic response, but it must not be interpreted
-    as a convergent infinite MA representation.
-
-    Raises
-    ------
-    ValueError
-        If ``n_terms`` or the supplied coefficients are invalid.
-    """
+    """Compute formal psi weights for any finite ARMA coefficients."""
     if (
         isinstance(n_terms, (bool, np.bool_))
         or not isinstance(n_terms, (int, np.integer))
         or n_terms < 1
     ):
         raise ValueError("n_terms must be a positive integer.")
-
     ar_values = _validate_coefficients(ar, "ar")
     ma_values = _validate_coefficients(ma, "ma")
-
     psi = np.zeros(int(n_terms), dtype=float)
     psi[0] = 1.0
-
-    p = ar_values.size
-    q = ma_values.size
-
     for j in range(1, int(n_terms)):
-        theta_j = ma_values[j - 1] if j <= q else 0.0
-        upper_ar_lag = min(p, j)
-        ar_component = sum(
-            ar_values[i - 1] * psi[j - i]
-            for i in range(1, upper_ar_lag + 1)
-        )
-        psi[j] = theta_j + ar_component
-
+        theta_j = ma_values[j - 1] if j <= ma_values.size else 0.0
+        upper = min(ar_values.size, j)
+        psi[j] = theta_j + np.dot(ar_values[:upper], psi[j - 1 :: -1][:upper])
     return psi
 
 
 def arma_autocovariances(
-    ar,
-    ma,
-    n_lags=20,
-    innovation_variance=1.0,
-    n_psi=1000,
-):
-    """
-    Compute theoretical autocovariances of a causal ARMA process.
-
-    The autocovariances are approximated from the infinite MA
-    representation:
-
-        gamma_k = sigma^2 * sum_j psi_j * psi_{j+k}
-
-    Parameters
-    ----------
-    ar : array-like
-        AR coefficients [phi_1, ..., phi_p].
-
-    ma : array-like
-        MA coefficients [theta_1, ..., theta_q].
-
-    n_lags : int, default=20
-        Maximum autocovariance lag.
-
-    innovation_variance : float, default=1.0
-        Variance of the innovation process.
-
-    n_psi : int, default=1000
-        Number of psi-weights used in the approximation.
-
-    Returns
-    -------
-    numpy.ndarray
-        Autocovariances from lag 0 through `n_lags`.
-
-    Raises
-    ------
-    ValueError
-        If the arguments are invalid or the ARMA model is not causal.
-    """
-    import numpy as np
-
-    if not isinstance(n_lags, int) or n_lags < 0:
-        raise ValueError("n_lags must be a non-negative integer.")
-
-    if not isinstance(n_psi, int) or n_psi <= n_lags:
-        raise ValueError(
-            "n_psi must be an integer greater than n_lags."
-        )
-
-    if innovation_variance <= 0:
-        raise ValueError(
-            "innovation_variance must be strictly positive."
-        )
-
-    diagnostics = arma_diagnostics(ar=ar, ma=ma)
-
+    ar: Iterable[Real] | None,
+    ma: Iterable[Real] | None,
+    n_lags: int = 20,
+    innovation_variance: float = 1.0,
+    n_psi: int = 1000,
+) -> np.ndarray:
+    """Compute theoretical autocovariances of a causal ARMA process."""
+    n_lags = _validate_nonnegative_integer(n_lags, "n_lags")
+    if (
+        isinstance(n_psi, (bool, np.bool_))
+        or not isinstance(n_psi, (int, np.integer))
+        or n_psi <= n_lags
+    ):
+        raise ValueError("n_psi must be an integer greater than n_lags.")
+    if (
+        isinstance(innovation_variance, (bool, np.bool_))
+        or not isinstance(innovation_variance, Real)
+        or not np.isfinite(innovation_variance)
+        or innovation_variance <= 0
+    ):
+        raise ValueError("innovation_variance must be strictly positive and finite.")
+    diagnostics = arma_diagnostics(ar, ma)
     if not diagnostics["causal"]:
-        raise ValueError(
-            "The theoretical autocovariances are defined only for causal "
-            "ARMA models."
-        )
-
-    psi = arma_psi_weights(
-        ar=ar,
-        ma=ma,
-        n_terms=n_psi + n_lags,
+        raise ValueError("Theoretical autocovariances require a causal ARMA model.")
+    psi = arma_psi_weights(ar, ma, int(n_psi) + n_lags)
+    return float(innovation_variance) * np.array(
+        [np.dot(psi[: int(n_psi)], psi[k : k + int(n_psi)]) for k in range(n_lags + 1)]
     )
 
-    gamma = np.empty(n_lags + 1, dtype=float)
 
-    for lag in range(n_lags + 1):
-        gamma[lag] = (
-            innovation_variance
-            * np.dot(
-                psi[:n_psi],
-                psi[lag : lag + n_psi],
-            )
-        )
-
-    return gamma
 def arma_acf(
-    ar,
-    ma,
-    n_lags=20,
-    n_psi=1000,
-):
-    """
-    Compute the theoretical autocorrelation function of a causal ARMA process.
-
-    Parameters
-    ----------
-    ar : array-like
-        AR coefficients [phi_1, ..., phi_p].
-
-    ma : array-like
-        MA coefficients [theta_1, ..., theta_q].
-
-    n_lags : int, default=20
-        Maximum ACF lag.
-
-    n_psi : int, default=1000
-        Number of psi-weights used to approximate the autocovariances.
-
-    Returns
-    -------
-    numpy.ndarray
-        Theoretical autocorrelations from lag 0 through `n_lags`.
-
-    Raises
-    ------
-    ValueError
-        If the supplied ARMA model is not causal.
-    """
-    diagnostics = arma_diagnostics(ar=ar, ma=ma)
-
-    if not diagnostics["causal"]:
-        raise ValueError(
-            "The theoretical ACF is defined only for causal ARMA models."
-        )
-
-    gamma = arma_autocovariances(
-        ar=ar,
-        ma=ma,
-        n_lags=n_lags,
-        innovation_variance=1.0,
-        n_psi=n_psi,
-    )
-
-    if gamma[0] <= 0:
-        raise ValueError(
-            "The variance gamma[0] must be strictly positive."
-        )
-
+    ar: Iterable[Real] | None,
+    ma: Iterable[Real] | None,
+    n_lags: int = 20,
+    n_psi: int = 1000,
+) -> np.ndarray:
+    """Compute the theoretical ACF of a causal ARMA process."""
+    gamma = arma_autocovariances(ar, ma, n_lags, 1.0, n_psi)
+    if not np.isfinite(gamma[0]) or gamma[0] <= 0:
+        raise ValueError("The variance gamma[0] must be strictly positive.")
     return gamma / gamma[0]
 
+
 def arma_pacf(
-    ar=None,
-    ma=None,
-    acf=None,
-    n_lags=20,
-    n_psi=1000,
-):
-    """
-    Compute the theoretical PACF using the Durbin-Levinson recursion.
-
-    The function can either compute the ACF from ARMA coefficients or use
-    a supplied autocorrelation sequence.
-
-    Parameters
-    ----------
-    ar : array-like or None, default=None
-        AR coefficients [phi_1, ..., phi_p].
-
-    ma : array-like or None, default=None
-        MA coefficients [theta_1, ..., theta_q].
-
-    acf : array-like or None, default=None
-        Precomputed autocorrelation sequence beginning with lag zero.
-        If supplied, `ar` and `ma` are ignored.
-
-    n_lags : int, default=20
-        Maximum PACF lag.
-
-    n_psi : int, default=1000
-        Number of psi-weights used if the ACF must be computed.
-
-    Returns
-    -------
-    numpy.ndarray
-        Partial autocorrelations from lag 0 through `n_lags`.
-
-        The value at lag zero is 1.
-
-    Raises
-    ------
-    ValueError
-        If the supplied arguments are invalid or the recursion fails.
-    """
-    import numpy as np
-
-    if not isinstance(n_lags, int) or n_lags < 0:
-        raise ValueError("n_lags must be a non-negative integer.")
-
+    ar: Iterable[Real] | None = None,
+    ma: Iterable[Real] | None = None,
+    acf: Iterable[Real] | None = None,
+    n_lags: int = 20,
+    n_psi: int = 1000,
+) -> np.ndarray:
+    """Compute theoretical PACF values with the Durbin-Levinson recursion."""
+    n_lags = _validate_nonnegative_integer(n_lags, "n_lags")
     if acf is None:
-        if ar is None:
-            ar = []
-
-        if ma is None:
-            ma = []
-
-        diagnostics = arma_diagnostics(ar=ar, ma=ma)
-
-        if not diagnostics["causal"]:
-            raise ValueError(
-                "The theoretical PACF is defined only for causal ARMA "
-                "models."
-            )
-
-        rho = arma_acf(
-            ar=ar,
-            ma=ma,
-            n_lags=n_lags,
-            n_psi=n_psi,
-        )
+        rho = arma_acf(ar, ma, n_lags, n_psi)
     else:
         rho = np.asarray(acf, dtype=float)
-
         if rho.ndim != 1:
             raise ValueError("acf must be a one-dimensional sequence.")
-
-        if len(rho) < n_lags + 1:
-            raise ValueError(
-                "acf must contain at least n_lags + 1 values."
-            )
-
+        if rho.size < n_lags + 1:
+            raise ValueError("acf must contain at least n_lags + 1 values.")
         rho = rho[: n_lags + 1]
-
         if not np.all(np.isfinite(rho)):
             raise ValueError("acf must contain only finite values.")
-
         if not np.isclose(rho[0], 1.0):
             raise ValueError("The ACF value at lag zero must equal 1.")
-
     pacf = np.empty(n_lags + 1, dtype=float)
     pacf[0] = 1.0
-
     if n_lags == 0:
         return pacf
-
-    # phi_matrix[k, j] stores phi_{k,j}.
-    phi_matrix = np.zeros(
-        (n_lags + 1, n_lags + 1),
-        dtype=float,
-    )
-
-    prediction_variance = np.empty(n_lags + 1, dtype=float)
-    prediction_variance[0] = 1.0
-
+    phi = np.zeros((n_lags + 1, n_lags + 1), dtype=float)
+    variance = np.empty(n_lags + 1, dtype=float)
+    variance[0] = 1.0
     for k in range(1, n_lags + 1):
         numerator = rho[k]
-
         if k > 1:
-            numerator -= np.dot(
-                phi_matrix[k - 1, 1:k],
-                rho[k - 1 : 0 : -1],
-            )
-
-        denominator = prediction_variance[k - 1]
-
-        if denominator <= 0 or np.isclose(denominator, 0.0):
+            numerator -= np.dot(phi[k - 1, 1:k], rho[k - 1 : 0 : -1])
+        if variance[k - 1] <= 0 or np.isclose(variance[k - 1], 0.0):
             raise ValueError(
-                "Durbin-Levinson recursion encountered a "
-                "non-positive prediction-error variance."
+                "Durbin-Levinson recursion encountered a non-positive "
+                "prediction-error variance."
             )
-
-        phi_kk = numerator / denominator
-        phi_matrix[k, k] = phi_kk
-
-        for j in range(1, k):
-            phi_matrix[k, j] = (
-                phi_matrix[k - 1, j]
-                - phi_kk * phi_matrix[k - 1, k - j]
-            )
-
-        pacf[k] = phi_kk
-
-        prediction_variance[k] = (
-            prediction_variance[k - 1]
-            * (1.0 - phi_kk**2)
-        )
-
+        phi[k, k] = numerator / variance[k - 1]
+        if k > 1:
+            phi[k, 1:k] = phi[k - 1, 1:k] - phi[k, k] * phi[k - 1, k - 1 : 0 : -1]
+        pacf[k] = phi[k, k]
+        variance[k] = variance[k - 1] * (1.0 - phi[k, k] ** 2)
     return pacf
 
 
-
-def plot_arma_acf(
-    ar,
-    ma,
-    n_lags=20,
-    n_psi=1000,
-):
-    """
-    Plot the theoretical autocorrelation function of an ARMA model.
-
-    Parameters
-    ----------
-    ar : array-like
-        Autoregressive coefficients in the polynomial
-
-            phi(L) = 1 - phi_1 L - ... - phi_p L^p.
-
-    ma : array-like
-        Moving-average coefficients in the polynomial
-
-            theta(L) = 1 + theta_1 L + ... + theta_q L^q.
-
-    n_lags : int, default=20
-        Maximum lag to display. Lag zero is included.
-
-    n_psi : int, default=1000
-        Number of psi weights used to approximate the theoretical
-        autocovariances.
-
-    Returns
-    -------
-    fig : matplotlib.figure.Figure
-        Matplotlib figure containing the plot.
-
-    ax : matplotlib.axes.Axes
-        Matplotlib axes containing the plot.
-
-    Notes
-    -----
-    The graph shows a theoretical ACF. Therefore, confidence bands are
-    not included.
-    """
-    import matplotlib.pyplot as plt
-
-    if not isinstance(n_lags, int) or n_lags < 0:
-        raise ValueError("n_lags must be a non-negative integer.")
-
-    acf_values = arma_acf(
-        ar=ar,
-        ma=ma,
-        n_lags=n_lags,
-        n_psi=n_psi,
-    )
-
-    lags = np.arange(n_lags + 1)
-
-    fig, ax = plt.subplots(figsize=(8, 4.5))
-
-    ax.vlines(
-        lags,
-        0,
-        acf_values,
-        linewidth=1.5,
-    )
-
-    ax.scatter(
-        lags,
-        acf_values,
-        s=30,
-        zorder=3,
-    )
-
-    ax.axhline(
-        y=0,
-        linewidth=1,
-    )
-
-    ax.set_title("Theoretical Autocorrelation Function")
-    ax.set_xlabel("Lag")
-    ax.set_ylabel("Autocorrelation")
-
-    ax.set_xlim(-0.5, n_lags + 0.5)
-    ax.set_ylim(
-        min(-1.05, float(np.min(acf_values)) - 0.05),
-        max(1.05, float(np.max(acf_values)) + 0.05),
-    )
-
+def _correlation_axis(ax, lags: np.ndarray, values: np.ndarray, title: str, ylabel: str) -> None:
+    ax.vlines(lags, 0, values, linewidth=1.5)
+    ax.scatter(lags, values, s=30, zorder=3)
+    ax.axhline(0, linewidth=1)
+    ax.set(title=title, xlabel="Lag", ylabel=ylabel)
+    ax.set_xlim(-0.5, lags[-1] + 0.5)
+    ax.set_ylim(min(-1.05, float(values.min()) - 0.05), max(1.05, float(values.max()) + 0.05))
     ax.set_xticks(lags)
     ax.grid(axis="y", alpha=0.3)
 
-    fig.tight_layout()
 
-    return fig, ax
-
-
-def plot_arma_pacf(
-    ar,
-    ma,
-    n_lags=20,
-    n_psi=1000,
-):
-    """
-    Plot the theoretical partial autocorrelation function of an ARMA model.
-
-    Parameters
-    ----------
-    ar : array-like
-        Autoregressive coefficients in the polynomial
-
-            phi(L) = 1 - phi_1 L - ... - phi_p L^p.
-
-    ma : array-like
-        Moving-average coefficients in the polynomial
-
-            theta(L) = 1 + theta_1 L + ... + theta_q L^q.
-
-    n_lags : int, default=20
-        Maximum lag to display. Lag zero is included.
-
-    n_psi : int, default=1000
-        Number of psi weights used to approximate the theoretical
-        autocovariances and autocorrelations.
-
-    Returns
-    -------
-    fig : matplotlib.figure.Figure
-        Matplotlib figure containing the plot.
-
-    ax : matplotlib.axes.Axes
-        Matplotlib axes containing the plot.
-
-    Notes
-    -----
-    The graph shows a theoretical PACF. Therefore, confidence bands are
-    not included.
-    """
-    import matplotlib.pyplot as plt
-
-    if not isinstance(n_lags, int) or n_lags < 0:
-        raise ValueError("n_lags must be a non-negative integer.")
-
-    pacf_values = arma_pacf(
-        ar=ar,
-        ma=ma,
-        n_lags=n_lags,
-        n_psi=n_psi,
-    )
-
-    lags = np.arange(n_lags + 1)
-
+def plot_arma_acf(ar, ma, n_lags: int = 20, n_psi: int = 1000):
+    """Plot the theoretical ACF; return ``(figure, axes)``."""
+    values = arma_acf(ar, ma, n_lags, n_psi)
+    lags = np.arange(values.size)
     fig, ax = plt.subplots(figsize=(8, 4.5))
-
-    ax.vlines(
-        lags,
-        0,
-        pacf_values,
-        linewidth=1.5,
-    )
-
-    ax.scatter(
-        lags,
-        pacf_values,
-        s=30,
-        zorder=3,
-    )
-
-    ax.axhline(
-        y=0,
-        linewidth=1,
-    )
-
-    ax.set_title("Theoretical Partial Autocorrelation Function")
-    ax.set_xlabel("Lag")
-    ax.set_ylabel("Partial Autocorrelation")
-
-    ax.set_xlim(-0.5, n_lags + 0.5)
-    ax.set_ylim(
-        min(-1.05, float(np.min(pacf_values)) - 0.05),
-        max(1.05, float(np.max(pacf_values)) + 0.05),
-    )
-
-    ax.set_xticks(lags)
-    ax.grid(axis="y", alpha=0.3)
-
+    _correlation_axis(ax, lags, values, "Theoretical Autocorrelation Function", "Autocorrelation")
     fig.tight_layout()
-
     return fig, ax
 
-def plot_arma_correlations(
-    ar,
-    ma,
-    n_lags=20,
-    n_psi=1000,
-):
-    """
-    Plot the theoretical ACF and PACF of an ARMA model together.
 
-    Parameters
-    ----------
-    ar : array-like
-        Autoregressive coefficients in the polynomial
-
-            phi(L) = 1 - phi_1 L - ... - phi_p L^p.
-
-    ma : array-like
-        Moving-average coefficients in the polynomial
-
-            theta(L) = 1 + theta_1 L + ... + theta_q L^q.
-
-    n_lags : int, default=20
-        Maximum lag to display. Lag zero is included.
-
-    n_psi : int, default=1000
-        Number of psi weights used to approximate the theoretical
-        autocovariances and autocorrelations.
-
-    Returns
-    -------
-    fig : matplotlib.figure.Figure
-        Matplotlib figure containing both plots.
-
-    axes : numpy.ndarray
-        Array containing the ACF and PACF axes.
-
-        ``axes[0]`` is the ACF plot and ``axes[1]`` is the PACF plot.
-
-    Notes
-    -----
-    These are theoretical correlation functions. Confidence bands are
-    therefore not included.
-    """
-    import matplotlib.pyplot as plt
-
-    if not isinstance(n_lags, int) or n_lags < 0:
-        raise ValueError("n_lags must be a non-negative integer.")
-
-    acf_values = arma_acf(
-        ar=ar,
-        ma=ma,
-        n_lags=n_lags,
-        n_psi=n_psi,
-    )
-
-    pacf_values = arma_pacf(
-        ar=ar,
-        ma=ma,
-        n_lags=n_lags,
-        n_psi=n_psi,
-    )
-
-    lags = np.arange(n_lags + 1)
-
-    fig, axes = plt.subplots(
-        nrows=1,
-        ncols=2,
-        figsize=(13, 4.5),
-        sharex=True,
-    )
-
-    # Theoretical ACF
-    axes[0].vlines(
-        lags,
-        0,
-        acf_values,
-        linewidth=1.5,
-    )
-
-    axes[0].scatter(
-        lags,
-        acf_values,
-        s=30,
-        zorder=3,
-    )
-
-    axes[0].axhline(
-        y=0,
-        linewidth=1,
-    )
-
-    axes[0].set_title("Theoretical ACF")
-    axes[0].set_xlabel("Lag")
-    axes[0].set_ylabel("Autocorrelation")
-
-    axes[0].set_ylim(
-        min(-1.05, float(np.min(acf_values)) - 0.05),
-        max(1.05, float(np.max(acf_values)) + 0.05),
-    )
-
-    axes[0].grid(axis="y", alpha=0.3)
-
-    # Theoretical PACF
-    axes[1].vlines(
-        lags,
-        0,
-        pacf_values,
-        linewidth=1.5,
-    )
-
-    axes[1].scatter(
-        lags,
-        pacf_values,
-        s=30,
-        zorder=3,
-    )
-
-    axes[1].axhline(
-        y=0,
-        linewidth=1,
-    )
-
-    axes[1].set_title("Theoretical PACF")
-    axes[1].set_xlabel("Lag")
-    axes[1].set_ylabel("Partial Autocorrelation")
-
-    axes[1].set_ylim(
-        min(-1.05, float(np.min(pacf_values)) - 0.05),
-        max(1.05, float(np.max(pacf_values)) + 0.05),
-    )
-
-    axes[1].grid(axis="y", alpha=0.3)
-
-    for ax in axes:
-        ax.set_xlim(-0.5, n_lags + 0.5)
-        ax.set_xticks(lags)
-
+def plot_arma_pacf(ar, ma, n_lags: int = 20, n_psi: int = 1000):
+    """Plot the theoretical PACF; return ``(figure, axes)``."""
+    values = arma_pacf(ar, ma, n_lags=n_lags, n_psi=n_psi)
+    lags = np.arange(values.size)
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    _correlation_axis(ax, lags, values, "Theoretical Partial Autocorrelation Function", "Partial Autocorrelation")
     fig.tight_layout()
+    return fig, ax
 
+
+def plot_arma_correlations(ar, ma, n_lags: int = 20, n_psi: int = 1000):
+    """Plot theoretical ACF and PACF side by side."""
+    acf_values = arma_acf(ar, ma, n_lags, n_psi)
+    pacf_values = arma_pacf(ar, ma, n_lags=n_lags, n_psi=n_psi)
+    lags = np.arange(acf_values.size)
+    fig, axes = plt.subplots(1, 2, figsize=(13, 4.5), sharex=True)
+    _correlation_axis(axes[0], lags, acf_values, "Theoretical ACF", "Autocorrelation")
+    _correlation_axis(axes[1], lags, pacf_values, "Theoretical PACF", "Partial Autocorrelation")
+    fig.tight_layout()
     return fig, axes
 
 
-def arma_dynamics(
-    ar,
-    ma,
-    horizon=20,
-):
-    """
-    Analyse the dynamic response of an ARMA model through its psi-weights.
-
-    The ARMA model is
-
-        phi(L) y_t = theta(L) epsilon_t,
-
-    with infinite-MA representation
-
-        y_t = sum_{j=0}^infinity psi_j epsilon_{t-j}.
-
-    The psi-weights measure the response of y_{t+j} to a one-unit
-    innovation epsilon_t.
-
-    Parameters
-    ----------
-    ar : array-like
-        Autoregressive coefficients [phi_1, ..., phi_p].
-
-    ma : array-like
-        Moving-average coefficients [theta_1, ..., theta_q].
-
-    horizon : int, default=20
-        Maximum response horizon. The returned psi sequence contains
-        horizons 0 through `horizon`.
-
-    Returns
-    -------
-    dict
-        Dictionary containing
-
-        - ``psi`` : psi-weights from horizon 0 to `horizon`
-        - ``cumulative_psi`` : cumulative sum of psi-weights
-        - ``causal`` : whether the AR polynomial is causal
-        - ``long_run_exists`` : whether a finite long-run response exists
-        - ``long_run_response`` : analytical long-run response if causal,
-          otherwise None
-        - ``horizon`` : maximum horizon used
-
-    Notes
-    -----
-    For a causal ARMA model,
-
-        sum psi_j = theta(1) / phi(1).
-
-    For a noncausal model, no finite long-run response is reported.
-    The finite-horizon psi-weights and cumulative responses are still
-    returned for diagnostic and teaching purposes.
-    """
-    if not isinstance(horizon, (int, np.integer)) or isinstance(horizon, bool):
-        raise ValueError("horizon must be a non-negative integer.")
-
-    if horizon < 0:
-        raise ValueError("horizon must be a non-negative integer.")
-
-    ar = np.asarray(ar, dtype=float)
-    ma = np.asarray(ma, dtype=float)
-
-    diagnostics = arma_diagnostics(ar=ar, ma=ma)
-
-    psi = arma_psi_weights(
-        ar=ar,
-        ma=ma,
-        n_terms=horizon + 1,
-    )
-
-    cumulative_psi = np.cumsum(psi)
-
+def arma_dynamics(ar, ma, horizon: int = 20) -> dict:
+    """Return impulse-response psi weights and their cumulative response."""
+    horizon = _validate_nonnegative_integer(horizon, "horizon")
+    ar_values = _validate_coefficients(ar, "ar")
+    ma_values = _validate_coefficients(ma, "ma")
+    diagnostics = arma_diagnostics(ar_values, ma_values)
+    psi = arma_psi_weights(ar_values, ma_values, horizon + 1)
     causal = diagnostics["causal"]
-
+    long_run_response = None
     if causal:
-        phi_at_one = 1.0 - np.sum(ar)
-        theta_at_one = 1.0 + np.sum(ma)
-
-        long_run_response = theta_at_one / phi_at_one
-        long_run_exists = True
-    else:
-        long_run_response = None
-        long_run_exists = False
-
+        long_run_response = (1.0 + ma_values.sum()) / (1.0 - ar_values.sum())
     return {
         "psi": psi,
-        "cumulative_psi": cumulative_psi,
+        "cumulative_psi": np.cumsum(psi),
         "causal": causal,
-        "long_run_exists": long_run_exists,
+        "long_run_exists": causal,
         "long_run_response": long_run_response,
         "horizon": horizon,
     }
 
-def plot_arma_dynamic_response(
+
+def plot_arma_dynamic_response(ar, ma, horizon: int = 20):
+    """Plot the impulse-response psi weights."""
+    results = arma_dynamics(ar, ma, horizon)
+    x = np.arange(results["horizon"] + 1)
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    ax.vlines(x, 0, results["psi"], linewidth=1.5)
+    ax.scatter(x, results["psi"], s=30, zorder=3)
+    ax.axhline(0, linewidth=1)
+    ax.set(title="Dynamic Response to a Unit Innovation", xlabel="Horizon", ylabel=r"$\psi_j$")
+    ax.set_xlim(-0.5, results["horizon"] + 0.5)
+    ax.set_xticks(x)
+    ax.grid(axis="y", alpha=0.3)
+    fig.tight_layout()
+    return fig, ax
+
+
+def plot_arma_cumulative_response(ar, ma, horizon: int = 20):
+    """Plot the cumulative impulse response."""
+    results = arma_dynamics(ar, ma, horizon)
+    x = np.arange(results["horizon"] + 1)
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    ax.plot(x, results["cumulative_psi"], marker="o")
+    if results["long_run_exists"]:
+        ax.axhline(results["long_run_response"], linestyle="--", linewidth=1.2, label="Long-run response")
+        ax.legend()
+    ax.set(title="Cumulative Response to a Unit Innovation", xlabel="Horizon", ylabel=r"$\sum_{i=0}^{j}\psi_i$")
+    ax.set_xlim(-0.5, results["horizon"] + 0.5)
+    ax.set_xticks(x)
+    ax.grid(axis="y", alpha=0.3)
+    fig.tight_layout()
+    return fig, ax
+
+
+def arma_summary(results: Mapping) -> None:
+    """Print a compact table for results returned by :func:`arma_dynamics`."""
+    required = {"psi", "cumulative_psi", "causal", "long_run_exists", "long_run_response", "horizon"}
+    missing = required.difference(results)
+    if missing:
+        raise ValueError("results is missing required keys: " + ", ".join(sorted(missing)))
+    psi = np.asarray(results["psi"], dtype=float)
+    cumulative = np.asarray(results["cumulative_psi"], dtype=float)
+    if psi.ndim != 1 or cumulative.ndim != 1 or psi.size != cumulative.size:
+        raise ValueError("psi and cumulative_psi must be one-dimensional and have the same length.")
+    print("ARMA Dynamic Analysis")
+    print("=" * 42)
+    print(f"Causal model ............. {results['causal']}")
+    long_run = f"{results['long_run_response']:.6f}" if results["long_run_exists"] else "Not defined"
+    print(f"Long-run response ........ {long_run}")
+    print(f"Analysis horizon ......... {results['horizon']}")
+    print(f"\n{'Horizon':>8} {'psi_j':>12} {'Cumulative psi':>16}")
+    print("-" * 38)
+    for j, (psi_j, cumulative_j) in enumerate(zip(psi, cumulative)):
+        print(f"{j:8d} {psi_j:12.4f} {cumulative_j:16.4f}")
+
+
+def _inverse_root_data(ar, ma, root_tolerance):
+    diagnostics = arma_diagnostics(ar, ma, root_tolerance)
+    ar_inv = np.asarray(diagnostics["inverse_ar_roots"], dtype=complex)
+    ma_inv = np.asarray(diagnostics["inverse_ma_roots"], dtype=complex)
+    common_inv = np.asarray(
+        [1.0 / pair["ar_root"] for pair in diagnostics["common_root_pairs"]], dtype=complex
+    )
+    all_roots = np.concatenate((ar_inv, ma_inv))
+    limit = 1.15 * max(1.0, float(np.max(np.abs(all_roots))) if all_roots.size else 1.0)
+    return diagnostics, ar_inv, ma_inv, common_inv, limit
+
+
+def plot_arma_inverse_roots(ar, ma, root_tolerance: float = 1e-6):
+    """Plot inverse AR and MA roots in the complex plane with Matplotlib."""
+    _, ar_inv, ma_inv, common_inv, limit = _inverse_root_data(ar, ma, root_tolerance)
+    fig, ax = plt.subplots(figsize=(6.5, 6.5))
+    angles = np.linspace(0, 2 * np.pi, 500)
+    ax.plot(np.cos(angles), np.sin(angles), "--", linewidth=1.2, label="Unit circle")
+    ax.axhline(0, linewidth=1)
+    ax.axvline(0, linewidth=1)
+    if ar_inv.size:
+        ax.scatter(ar_inv.real, ar_inv.imag, marker="x", s=80, linewidths=2, label="AR inverse roots", zorder=3)
+    if ma_inv.size:
+        ax.scatter(ma_inv.real, ma_inv.imag, marker="o", s=70, facecolors="none", linewidths=1.8, label="MA inverse roots", zorder=3)
+    if common_inv.size:
+        ax.scatter(common_inv.real, common_inv.imag, marker="+", s=180, linewidths=2.5, label="Common inverse root", zorder=5)
+    ax.set(xlim=(-limit, limit), ylim=(-limit, limit), title="Inverse Roots of AR and MA Polynomials", xlabel="Real part", ylabel="Imaginary part")
+    ax.set_aspect("equal", adjustable="box")
+    ax.grid(alpha=0.3)
+    ax.legend()
+    fig.tight_layout()
+    return fig, ax
+
+
+def plotly_arma_inverse_roots(ar, ma, root_tolerance: float = 1e-6):
+    """Plot inverse AR and MA roots interactively with Plotly."""
+    _, ar_inv, ma_inv, common_inv, limit = _inverse_root_data(ar, ma, root_tolerance)
+    angles = np.linspace(0, 2 * np.pi, 500)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=np.cos(angles), y=np.sin(angles), mode="lines", name="Unit circle", line={"dash": "dash"}, hoverinfo="skip"))
+    if ar_inv.size:
+        fig.add_trace(go.Scatter(x=ar_inv.real, y=ar_inv.imag, mode="markers", name="AR inverse roots", marker={"symbol": "x", "size": 12}, customdata=np.abs(ar_inv), hovertemplate="Real: %{x:.4f}<br>Imaginary: %{y:.4f}<br>Modulus: %{customdata:.4f}<extra></extra>"))
+    if ma_inv.size:
+        fig.add_trace(go.Scatter(x=ma_inv.real, y=ma_inv.imag, mode="markers", name="MA inverse roots", marker={"symbol": "circle", "size": 11}, customdata=np.abs(ma_inv), hovertemplate="Real: %{x:.4f}<br>Imaginary: %{y:.4f}<br>Modulus: %{customdata:.4f}<extra></extra>"))
+    if common_inv.size:
+        fig.add_trace(go.Scatter(x=common_inv.real, y=common_inv.imag, mode="markers", name="Common inverse root", marker={"symbol": "cross", "size": 16}, hovertemplate="Common root<br>Real: %{x:.4f}<br>Imaginary: %{y:.4f}<extra></extra>"))
+    fig.add_hline(y=0, line_width=1)
+    fig.add_vline(x=0, line_width=1)
+    fig.update_xaxes(title="Real part", range=[-limit, limit], constrain="domain")
+    fig.update_yaxes(title="Imaginary part", range=[-limit, limit], scaleanchor="x", scaleratio=1)
+    fig.update_layout(title="Inverse Roots of AR and MA Polynomials", width=700, height=700)
+    return fig
+
+
+def _add_plotly_stems(fig, lags, values, name, row=None, col=None):
+    for lag, value in zip(lags, values):
+        fig.add_shape(type="line", x0=lag, x1=lag, y0=0, y1=value, line={"width": 1.5}, row=row, col=col)
+    kwargs = {} if row is None else {"row": row, "col": col}
+    fig.add_trace(go.Scatter(x=lags, y=values, mode="markers", name=name, marker={"size": 8}, text=[f"Lag: {lag}<br>{name}: {value:.4f}" for lag, value in zip(lags, values)], hovertemplate="%{text}<extra></extra>", showlegend=False), **kwargs)
+
+
+def _plotly_correlation(ar, ma, n_lags, n_psi, kind):
+    values = arma_acf(ar, ma, n_lags, n_psi) if kind == "ACF" else arma_pacf(ar, ma, n_lags=n_lags, n_psi=n_psi)
+    lags = np.arange(values.size)
+    fig = go.Figure()
+    _add_plotly_stems(fig, lags, values, kind)
+    fig.add_hline(y=0, line_width=1)
+    title = "Theoretical Autocorrelation Function" if kind == "ACF" else "Theoretical Partial Autocorrelation Function"
+    ylabel = "Autocorrelation" if kind == "ACF" else "Partial Autocorrelation"
+    fig.update_layout(title=title, xaxis_title="Lag", yaxis_title=ylabel, showlegend=False)
+    fig.update_xaxes(tickmode="linear", tick0=0, dtick=1, range=[-0.5, n_lags + 0.5])
+    fig.update_yaxes(range=[min(-1.05, float(values.min()) - 0.05), max(1.05, float(values.max()) + 0.05)])
+    return fig
+
+
+def plotly_arma_acf(ar, ma, n_lags: int = 20, n_psi: int = 1000):
+    """Plot the theoretical ACF interactively."""
+    return _plotly_correlation(ar, ma, n_lags, n_psi, "ACF")
+
+
+def plotly_arma_pacf(ar, ma, n_lags: int = 20, n_psi: int = 1000):
+    """Plot the theoretical PACF interactively."""
+    return _plotly_correlation(ar, ma, n_lags, n_psi, "PACF")
+
+
+def plotly_arma_correlations(ar, ma, n_lags: int = 20, n_psi: int = 1000):
+    """Plot theoretical ACF and PACF side by side with Plotly."""
+    acf_values = arma_acf(ar, ma, n_lags, n_psi)
+    pacf_values = arma_pacf(ar, ma, n_lags=n_lags, n_psi=n_psi)
+    lags = np.arange(acf_values.size)
+    fig = make_subplots(rows=1, cols=2, subplot_titles=("Theoretical ACF", "Theoretical PACF"))
+    _add_plotly_stems(fig, lags, acf_values, "ACF", 1, 1)
+    _add_plotly_stems(fig, lags, pacf_values, "PACF", 1, 2)
+    for col in (1, 2):
+        fig.add_hline(y=0, line_width=1, row=1, col=col)
+        fig.update_xaxes(title_text="Lag", tickmode="linear", tick0=0, dtick=1, range=[-0.5, n_lags + 0.5], row=1, col=col)
+    fig.update_yaxes(title_text="Autocorrelation", range=[min(-1.05, float(acf_values.min()) - 0.05), max(1.05, float(acf_values.max()) + 0.05)], row=1, col=1)
+    fig.update_yaxes(title_text="Partial Autocorrelation", range=[min(-1.05, float(pacf_values.min()) - 0.05), max(1.05, float(pacf_values.max()) + 0.05)], row=1, col=2)
+    fig.update_layout(title="Theoretical ACF and PACF", width=1100, height=450)
+    return fig
+
+
+def plotly_arma_dynamic_response(
     ar,
     ma,
     horizon=20,
 ):
     """
-    Plot the psi-weights of an ARMA model.
+    Plot the psi-weights of an ARMA model interactively with Plotly.
 
     The psi-weights show the dynamic response of the process to a
     one-unit innovation.
@@ -971,14 +483,9 @@ def plot_arma_dynamic_response(
 
     Returns
     -------
-    fig : matplotlib.figure.Figure
-        Matplotlib figure.
-
-    ax : matplotlib.axes.Axes
-        Matplotlib axes.
+    plotly.graph_objects.Figure
+        Interactive Plotly figure.
     """
-    import matplotlib.pyplot as plt
-
     results = arma_dynamics(
         ar=ar,
         ma=ma,
@@ -988,48 +495,68 @@ def plot_arma_dynamic_response(
     psi = results["psi"]
     horizons = np.arange(horizon + 1)
 
-    fig, ax = plt.subplots(figsize=(8, 4.5))
+    fig = go.Figure()
 
-    ax.vlines(
-        horizons,
-        0,
-        psi,
-        linewidth=1.5,
+    # Vertical response lines
+    for h, value in zip(horizons, psi):
+        fig.add_shape(
+            type="line",
+            x0=h,
+            x1=h,
+            y0=0,
+            y1=value,
+            line=dict(width=1.5),
+        )
+
+    hover_text = [
+        (
+            f"Horizon: {h}<br>"
+            f"psi: {value:.4f}"
+        )
+        for h, value in zip(horizons, psi)
+    ]
+
+    fig.add_trace(
+        go.Scatter(
+            x=horizons,
+            y=psi,
+            mode="markers",
+            name="Dynamic response",
+            marker=dict(size=8),
+            text=hover_text,
+            hovertemplate="%{text}<extra></extra>",
+        )
     )
 
-    ax.scatter(
-        horizons,
-        psi,
-        s=30,
-        zorder=3,
-    )
-
-    ax.axhline(
+    fig.add_hline(
         y=0,
-        linewidth=1,
+        line_width=1,
     )
 
-    ax.set_title("Dynamic Response to a Unit Innovation")
-    ax.set_xlabel("Horizon")
-    ax.set_ylabel(r"$\psi_j$")
+    fig.update_layout(
+        title="Dynamic Response to a Unit Innovation",
+        xaxis_title="Horizon",
+        yaxis_title="psi",
+        showlegend=False,
+    )
 
-    ax.set_xlim(-0.5, horizon + 0.5)
-    ax.set_xticks(horizons)
+    fig.update_xaxes(
+        tickmode="linear",
+        tick0=0,
+        dtick=1,
+        range=[-0.5, horizon + 0.5],
+    )
 
-    ax.grid(axis="y", alpha=0.3)
-
-    fig.tight_layout()
-
-    return fig, ax
+    return fig
 
 
-def plot_arma_cumulative_response(
+def plotly_arma_cumulative_response(
     ar,
     ma,
     horizon=20,
 ):
     """
-    Plot the cumulative psi-response of an ARMA model.
+    Plot the cumulative psi-response of an ARMA model interactively.
 
     Parameters
     ----------
@@ -1044,14 +571,9 @@ def plot_arma_cumulative_response(
 
     Returns
     -------
-    fig : matplotlib.figure.Figure
-        Matplotlib figure.
-
-    ax : matplotlib.axes.Axes
-        Matplotlib axes.
+    plotly.graph_objects.Figure
+        Interactive Plotly figure.
     """
-    import matplotlib.pyplot as plt
-
     results = arma_dynamics(
         ar=ar,
         ma=ma,
@@ -1059,122 +581,68 @@ def plot_arma_cumulative_response(
     )
 
     cumulative = results["cumulative_psi"]
+    psi = results["psi"]
     horizons = np.arange(horizon + 1)
 
-    fig, ax = plt.subplots(figsize=(8, 4.5))
+    hover_text = [
+        (
+            f"Horizon: {h}<br>"
+            f"psi: {psi_j:.4f}<br>"
+            f"Cumulative response: {cum_j:.4f}"
+        )
+        for h, psi_j, cum_j in zip(
+            horizons,
+            psi,
+            cumulative,
+        )
+    ]
 
-    ax.plot(
-        horizons,
-        cumulative,
-        marker="o",
+    fig = go.Figure()
+
+    fig.add_trace(
+        go.Scatter(
+            x=horizons,
+            y=cumulative,
+            mode="lines+markers",
+            name="Cumulative response",
+            text=hover_text,
+            hovertemplate="%{text}<extra></extra>",
+        )
     )
 
+    # Add analytical LR response only for causal models.
     if results["long_run_exists"]:
-        ax.axhline(
-            results["long_run_response"],
-            linestyle="--",
-            linewidth=1.2,
-            label="Long-run response",
-        )
-        ax.legend()
-
-    ax.set_title("Cumulative Response to a Unit Innovation")
-    ax.set_xlabel("Horizon")
-    ax.set_ylabel(r"$\sum_{i=0}^{j}\psi_i$")
-
-    ax.set_xlim(-0.5, horizon + 0.5)
-    ax.set_xticks(horizons)
-
-    ax.grid(axis="y", alpha=0.3)
-
-    fig.tight_layout()
-
-    return fig, ax
-
-
-def arma_summary(results):
-    """
-    Print a compact summary of ARMA dynamic-response results.
-
-    Parameters
-    ----------
-    results : dict
-        Dictionary returned by `arma_dynamics()`.
-
-    Returns
-    -------
-    None
-        The function prints a summary table and does not return a value.
-    """
-    required_keys = {
-        "psi",
-        "cumulative_psi",
-        "causal",
-        "long_run_exists",
-        "long_run_response",
-        "horizon",
-    }
-
-    missing = required_keys.difference(results)
-
-    if missing:
-        raise ValueError(
-            "results is missing required keys: "
-            + ", ".join(sorted(missing))
+        fig.add_hline(
+            y=results["long_run_response"],
+            line_dash="dash",
+            line_width=1.5,
+            annotation_text=(
+                f"Long-run response = "
+                f"{results['long_run_response']:.4f}"
+            ),
+            annotation_position="top right",
         )
 
-    psi = np.asarray(results["psi"], dtype=float)
-    cumulative = np.asarray(
-        results["cumulative_psi"],
-        dtype=float,
+    fig.add_hline(
+        y=0,
+        line_width=1,
     )
 
-    if len(psi) != len(cumulative):
-        raise ValueError(
-            "psi and cumulative_psi must have the same length."
-        )
-
-    print("ARMA Dynamic Analysis")
-    print("=" * 42)
-    print()
-
-    print(
-        f"Causal model ............. "
-        f"{results['causal']}"
+    fig.update_layout(
+        title="Cumulative Response to a Unit Innovation",
+        xaxis_title="Horizon",
+        yaxis_title="Cumulative psi",
+        showlegend=False,
     )
 
-    if results["long_run_exists"]:
-        print(
-            f"Long-run response ........ "
-            f"{results['long_run_response']:.6f}"
-        )
-    else:
-        print(
-            "Long-run response ........ "
-            "Not defined"
-        )
-
-    print(
-        f"Analysis horizon ......... "
-        f"{results['horizon']}"
+    fig.update_xaxes(
+        tickmode="linear",
+        tick0=0,
+        dtick=1,
+        range=[-0.5, horizon + 0.5],
     )
 
-    print()
-    print(
-        f"{'Horizon':>8} "
-        f"{'psi_j':>12} "
-        f"{'Cumulative psi':>16}"
-    )
-    print("-" * 38)
-
-    for j, (psi_j, cumulative_j) in enumerate(
-        zip(psi, cumulative)
-    ):
-        print(
-            f"{j:8d} "
-            f"{psi_j:12.4f} "
-            f"{cumulative_j:16.4f}"
-        )
+    return fig
 
 
 __all__ = [
@@ -1190,4 +658,11 @@ __all__ = [
     "plot_arma_dynamic_response",
     "plot_arma_cumulative_response",
     "arma_summary",
+    "plot_arma_inverse_roots",
+    "plotly_arma_inverse_roots",
+    "plotly_arma_acf",
+    "plotly_arma_pacf",
+    "plotly_arma_correlations",
+    "plotly_arma_dynamic_response",
+    "plotly_arma_cumulative_response",
 ]
