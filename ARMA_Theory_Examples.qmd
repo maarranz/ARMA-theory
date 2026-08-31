@@ -1,0 +1,44 @@
+---
+title: "ARMA Theory Examples"
+author: "Miguel A. Arranz"
+format:
+  html:
+    toc: true
+jupyter: python3
+---
+
+## Introduction
+
+This document provides examples of the main theoretical tools available in **ARMA Theory**.
+
+The library works with user-specified AR and MA coefficients and studies the population properties implied by those coefficients.
+
+## Setup
+
+```{python}
+import arma_theory as arma
+```
+
+## A first ARMA model
+
+Consider an ARMA(1,1) model with
+
+$$
+y_t = 0.8y_{t-1} + \varepsilon_t + 0.5\varepsilon_{t-1}.
+$$
+
+The corresponding Python coefficients are:
+
+```{python}
+ar = [0.8]
+ma = [0.5]
+```
+
+We can examine the basic polynomial diagnostics:
+
+```{python}
+diagnostics = arma.arma_diagnostics(ar=ar, ma=ma)
+
+print("Causal:", diagnostics["causal"])
+print("Invertible:", diagnostics["invertible"])
+```
