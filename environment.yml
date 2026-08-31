@@ -12,4 +12,3 @@ dependencies:
   - python>=3.13
   - scipy
 
-prefix: "/opt/homebrew/Caskroom/miniforge/base/envs/arma_theory"
