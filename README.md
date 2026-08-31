@@ -1,15 +1,64 @@
 # ARMA Theory
 
-**ARMA Theory** is a small educational Python library for exploring the population properties and dynamic behaviour of autoregressive moving-average models.
+**ARMA Theory** is a small educational Python library for exploring the population properties and dynamic behaviour of autoregressive moving-average (ARMA) models.
 
-The project is designed for teaching time series analysis and econometrics. It starts from a set of AR and MA coefficients and makes the implied mathematics visible: polynomial roots, causality, invertibility, theoretical correlations, innovation responses, and long-run effects. It does **not** estimate models, forecast observed data, or replace a full time-series package.
+The library starts from user-specified AR and MA coefficients and computes the theoretical properties implied by those coefficients, including:
+
+- causality and stationarity;
+- invertibility;
+- AR and MA polynomial roots and inverse roots;
+- common roots and minimal representations;
+- theoretical autocovariances, ACF and PACF;
+- $\psi$-weights and the dynamic response to innovations;
+- cumulative and long-run responses when they are defined.
+
+The emphasis is on understanding how the coefficients of an ARMA model determine its theoretical behaviour. The library does **not** estimate ARMA models from data or provide forecasting methods. For those tasks, a general time-series package should be used.
+
+
+## Prerequisites and Installation
+
+ARMA Theory requires **Python 3.13 or later**. The repository includes an `environment.yml` file containing the Python dependencies needed to run the library and its examples.
+
+The recommended setup uses **Miniforge, Conda, or Mamba** with the `conda-forge` channel. Mamba is used in the commands below, but the equivalent Conda commands can also be used.
+
+Clone the repository and create the supplied environment:
+
+```bash
+git clone https://github.com/maarranz/ARMA-theory.git
+cd ARMA-theory
+mamba env create -f environment.yml
+mamba activate arma_theory
+```
+
+The environment includes NumPy, SciPy, pandas, Matplotlib, Plotly, IPython/Jupyter, and the other packages required by the project.
+
+ARMA Theory is not currently distributed as an installable Python package. Run Python or Jupyter from the repository directory and import the module directly:
+
+```python
+import arma_theory as arma
+```
+
+To verify that the module is available:
+
+```python
+arma.arma_diagnostics(ar=[0.8], ma=[])
+```
+
+Users who already have a suitable Python environment may install the required dependencies themselves instead of creating the supplied environment.
+
+### JupyterLab Desktop
+
+If you use JupyterLab Desktop, select the `arma_theory` environment in the application's Python environment manager. If the environment is not detected automatically, add it manually by selecting the Python executable from the `arma_theory` environment.
+
+The supplied environment includes both JupyterLab and `ipykernel`, so no additional kernel installation should normally be necessary.
+
 
 ## Model convention
 
 Throughout the project, an ARMA\((p,q)\) process is written as
 
 $$
-y_t = \phi_1 y_{t-1} + \cdots + \phi_p y_{t-p}
+y_t = \varphi_1 y_{t-1} + \cdots + \varphi_p y_{t-p}
       + \varepsilon_t
       + \theta_1 \varepsilon_{t-1} + \cdots + \theta_q \varepsilon_{t-q}.
 $$
@@ -17,13 +66,13 @@ $$
 Equivalently,
 
 $$
-\phi(L)y_t = \theta(L)\varepsilon_t,
+\varphi(L)y_t = \theta(L)\varepsilon_t,
 $$
 
 with
 
 $$
-\phi(L)=1-\phi_1L-\cdots-\phi_pL^p,
+\varphi(L)=1-\varphi_1L-\cdots-\varphi_pL^p,
 \qquad
 \theta(L)=1+\theta_1L+\cdots+\theta_qL^q.
 $$
@@ -45,40 +94,25 @@ Use an empty list for an absent component: `ar=[]` for a pure MA model and `ma=[
 
 ## What the library provides
 
-### Polynomial diagnostics
 
-`arma_diagnostics()` constructs the AR and MA lag polynomials and reports:
+## Polynomial Diagnostics
 
-- model order and validated coefficients;
-- AR and MA roots;
-- inverse roots;
-- causality/stationarity of the AR component;
-- invertibility of the MA component;
-- approximate common-root matches; and
-- whether the supplied representation is minimal.
+`arma_diagnostics()` examines the AR and MA polynomials of a specified model. It can be used to assess causality and stationarity, invertibility, and whether the AR and MA polynomials contain common roots.
 
-The strict conditions used by the library are:
-
-- the ARMA model is causal (and covariance-stationary) when every root of \(\phi(z)=0\) lies outside the unit circle;
-- the MA representation is invertible when every root of \(\theta(z)=0\) lies outside the unit circle; and
-- an ARMA representation is nonminimal when the AR and MA polynomials share a root, because a common factor can be cancelled.
-
-Roots sufficiently close to the unit circle, or to one another, are classified using the configurable `root_tolerance`.
+The library also computes polynomial roots and inverse roots, making it possible to examine these properties numerically and graphically.
 
 ```python
-import arma_theory as arma
-
 diagnostics = arma.arma_diagnostics(
     ar=[0.6, -0.2],
     ma=[0.5],
 )
 
-print(diagnostics["causal"])
-print(diagnostics["invertible"])
-print(diagnostics["minimal_representation"])
-print(diagnostics["inverse_ar_roots"])
-print(diagnostics["inverse_ma_roots"])
+print("Causal:", diagnostics["causal"])
+print("Invertible:", diagnostics["invertible"])
 ```
+
+See the accompanying documentation for a fuller discussion of the diagnostics and their interpretation.
+
 
 ### Theoretical ACF and PACF
 
@@ -109,7 +143,7 @@ The figures show population correlations, so sampling confidence bands are inten
 The transfer function
 
 $$
-\psi(L)=\frac{\theta(L)}{\phi(L)}
+\psi(L)=\frac{\theta(L)}{\varphi(L)}
        =\sum_{j=0}^{\infty}\psi_jL^j
 $$
 
@@ -118,10 +152,10 @@ describes how a one-unit innovation propagates through the process. The library 
 $$
 \psi_0=1,
 \qquad
-\psi_j=\theta_j+\sum_{i=1}^{\min(p,j)}\phi_i\psi_{j-i},
+\psi_j=\theta_j+\sum_{i=1}^{\min(p,j)}\varphi_i\psi_{j-i},
 $$
 
-where \(\theta_j=0\) beyond the MA order.
+where $\theta_j=0$ beyond the MA order.
 
 For a causal model, these weights form its convergent infinite-MA representation. For a unit-root or explosive model, the same finite recursion remains useful for displaying non-decaying or explosive dynamics, but it must not be interpreted as a convergent infinite-MA representation.
 
@@ -158,182 +192,26 @@ For a causal model, its finite long-run limit is
 $$
 \sum_{j=0}^{\infty}\psi_j
 =\psi(1)
-=\frac{\theta(1)}{\phi(1)}.
+=\frac{\theta(1)}{\varphi(1)}.
 $$
 
 The library reports this analytical long-run response only when the model is causal. Unit-root and explosive cases can still be inspected over a finite horizon, but no finite long-run response is asserted.
 
-For example, the ARMA\((1,1)\) model with `ar=[0.8]` and `ma=[0.5]` has
-
-$$
-\frac{1+0.5}{1-0.8}=7.5.
-$$
 
 ## Visualizations
 
-The library provides both static Matplotlib figures and interactive Plotly figures.
+ARMA Theory provides both **Matplotlib** and interactive **Plotly** visualizations for:
 
-### Matplotlib
+- theoretical ACF and PACF;
+- dynamic responses ($\psi$-weights);
+- cumulative responses;
+- AR and MA inverse roots.
 
-```python
-arma.plot_arma_correlations(
-    ar=[0.8],
-    ma=[0.5],
-    n_lags=20,
-)
+Inverse-root plots provide a graphical way to assess causality, invertibility, and possible common roots relative to the unit circle.
 
-arma.plot_arma_dynamic_response(
-    ar=[0.8],
-    ma=[0.5],
-    horizon=20,
-)
+See the accompanying documentation for examples and the available plotting functions.
 
-arma.plot_arma_cumulative_response(
-    ar=[0.8],
-    ma=[0.5],
-    horizon=20,
-)
-```
 
-Separate Matplotlib ACF and PACF functions are also available as `plot_arma_acf()` and `plot_arma_pacf()`.
-
-### Plotly
-
-```python
-arma.plotly_arma_correlations(
-    ar=[0.8],
-    ma=[0.5],
-    n_lags=20,
-)
-
-arma.plotly_arma_dynamic_response(
-    ar=[0.8],
-    ma=[0.5],
-    horizon=20,
-)
-
-arma.plotly_arma_cumulative_response(
-    ar=[0.8],
-    ma=[0.5],
-    horizon=20,
-)
-```
-
-Interactive figures add hover information while preserving the same theoretical quantities as the static versions. Separate Plotly ACF and PACF functions are available as `plotly_arma_acf()` and `plotly_arma_pacf()`.
-
-### Inverse-root diagrams
-
-Inverse-root diagrams place \(1/z\), rather than the polynomial root \(z\), in the complex plane. This makes the usual conditions visually immediate:
-
-- causal AR inverse roots lie strictly inside the unit circle;
-- invertible MA inverse roots lie strictly inside the unit circle; and
-- coincident AR and MA inverse roots reveal a common factor and a nonminimal representation.
-
-```python
-arma.plot_arma_inverse_roots(
-    ar=[1.2, -0.8],
-    ma=[],
-)
-
-arma.plotly_arma_inverse_roots(
-    ar=[0.5],
-    ma=[-0.5],
-)
-```
-
-The first example illustrates a complex-conjugate pair. In the second, the AR and MA polynomials share a root.
-
-## Installation with Mamba
-
-Clone the repository and enter its root directory:
-
-```bash
-git clone https://github.com/maarranz/ARMA-theory.git
-cd ARMA-theory
-```
-
-Create and activate the environment defined in `environment.yml`:
-
-```bash
-mamba env create -f environment.yml
-mamba activate arma_theory
-```
-
-Launch JupyterLab:
-
-```bash
-jupyter lab
-```
-
-Open `ARMA_Theory_Demo.ipynb`, or use the module directly from the repository root:
-
-```python
-import arma_theory as arma
-```
-
-The project is not yet packaged for installation with `pip`, so run notebooks and Python sessions from the repository root for now.
-
-## A compact worked example
-
-```python
-import arma_theory as arma
-
-ar = [0.8]
-ma = [0.5]
-
-# Polynomial properties
-diagnostics = arma.arma_diagnostics(ar=ar, ma=ma)
-
-# Population correlations
-acf = arma.arma_acf(ar=ar, ma=ma, n_lags=20)
-pacf = arma.arma_pacf(ar=ar, ma=ma, n_lags=20)
-
-# Innovation dynamics through horizon 20
-dynamics = arma.arma_dynamics(ar=ar, ma=ma, horizon=20)
-
-print(f"Causal: {diagnostics['causal']}")
-print(f"Invertible: {diagnostics['invertible']}")
-print(f"Long-run response: {dynamics['long_run_response']:.2f}")
-
-# Static and interactive views
-arma.plot_arma_correlations(ar=ar, ma=ma, n_lags=20)
-arma.plotly_arma_cumulative_response(ar=ar, ma=ma, horizon=20)
-```
-
-## Repository structure
-
-The current structure is intentionally unchanged while a common packaging and documentation pattern is considered for this and related teaching projects.
-
-```text
-ARMA-theory/
-├── arma_theory.py
-├── ARMA_Theory_Demo.ipynb
-├── environment.yml
-├── README.md
-├── LICENSE
-└── tests/
-```
-
-## Project status
-
-The numerical and visualization core is feature-complete as of **v0.5.5**. The current phase is documentation and teaching preparation rather than expansion of the mathematical API.
-
-The demonstration notebook has been run successfully from a restarted kernel across representative cases, including AR, MA, and ARMA models; unit-root and explosive processes; complex roots; and common-root representations.
-
-This is still a pre-1.0 educational project. Interfaces may be refined while the teaching materials and packaging are prepared.
-
-## Roadmap
-
-Near-term work is deliberately focused on presentation and maintainability:
-
-- write a concept-led teaching notebook from scratch;
-- retain the current demonstration notebook as a development and regression reference;
-- review and harmonize docstrings and examples;
-- add a minimal `pyproject.toml` and editable-install workflow;
-- decide on a shared repository layout for `ARMA-theory` and related teaching libraries; and
-- incorporate small refinements discovered through classroom use.
-
-No major new core features are currently planned.
 
 ## Intended audience
 
@@ -343,6 +221,16 @@ ARMA Theory is intended for:
 - instructors preparing lectures, demonstrations, and exercises;
 - researchers who want transparent population-level ARMA calculations; and
 - anyone interested in seeing how innovations propagate through a scalar dynamic model.
+
+
+## Author
+
+**Miguel A. Arranz**
+
+Universidad Carlos III de Madrid
+
+For questions, comments, or suggestions concerning ARMA Theory, please contact the author at [maarranz@eco.uc3m.es].
+
 
 ## License
 
