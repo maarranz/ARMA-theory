@@ -2381,7 +2381,7 @@ window.Quarto = {
     <div>
     <div class="quarto-title-meta-heading">Author</div>
     <div class="quarto-title-meta-contents">
-             <p>Miguel A. Arranz </p>
+             <p>Miguel A. Arranz <a href="mailto:maarranz@eco.uc3m.es" class="quarto-title-author-email"><i class="bi bi-envelope"></i></a> </p>
           </div>
   </div>
     
@@ -2404,7 +2404,7 @@ window.Quarto = {
 <h2 class="anchored" data-anchor-id="setup">Setup</h2>
 <p>The examples assume that the repository has been cloned and the <code>arma_theory</code> environment has been created and activated. See the project README for installation instructions.</p>
 <p>The library can then be imported directly from the repository directory:</p>
-<div id="7cc2300a" class="cell" data-execution_count="1">
+<div id="5672669b" class="cell" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> arma_theory <span class="im">as</span> arma</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 <p>All functions in the examples below are called through the <code>arma</code> namespace, for example <code>arma.arma_diagnostics()</code>, <code>arma.arma_acf()</code>, and <code>arma.arma_dynamics()</code>.</p>
@@ -2430,7 +2430,7 @@ y_t
 \theta(L)=1+\theta_1L+\cdots+\theta_qL^q.
 \]</span></p>
 <p>The coefficients supplied to Python follow these signs directly. For example,</p>
-<div id="fba8e4f1" class="cell" data-execution_count="2">
+<div id="cf5490e3" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>ar <span class="op">=</span> [<span class="fl">0.6</span>, <span class="op">-</span><span class="fl">0.2</span>]</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>ma <span class="op">=</span> [<span class="fl">0.5</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
@@ -2445,7 +2445,7 @@ y_t=0.6y_{t-1}-0.2y_{t-2}
 <h2 class="anchored" data-anchor-id="polynomial-diagnostics">Polynomial Diagnostics</h2>
 <p>The properties of an ARMA model depend on the roots of its AR and MA polynomials. <code>arma.arma_diagnostics()</code> computes these roots and uses them to assess causality, stationarity, invertibility, and possible common roots.</p>
 <p>We continue with the ARMA(2,1) model defined above:</p>
-<div id="40d9539c" class="cell" data-execution_count="3">
+<div id="f5d3f945" class="cell" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>diagnostics <span class="op">=</span> arma.arma_diagnostics(ar<span class="op">=</span>ar, ma<span class="op">=</span>ma)</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">&quot;Causal:&quot;</span>, diagnostics[<span class="st">&quot;causal&quot;</span>])</span>
@@ -2461,7 +2461,7 @@ Minimal representation: True</code></pre>
 <section id="polynomial-roots" class="level3">
 <h3 class="anchored" data-anchor-id="polynomial-roots">Polynomial Roots</h3>
 <p>The AR and MA roots can be examined directly:</p>
-<div id="f0658411" class="cell" data-execution_count="4">
+<div id="134607f4" class="cell" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">&quot;AR roots:&quot;</span>, diagnostics[<span class="st">&quot;ar_roots&quot;</span>])</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">&quot;MA roots:&quot;</span>, diagnostics[<span class="st">&quot;ma_roots&quot;</span>])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
@@ -2470,7 +2470,7 @@ MA roots: [-2.+0.j]</code></pre>
 </div>
 </div>
 <p>It is often more intuitive to examine the <strong>inverse roots</strong>, since causality and invertibility then require the corresponding inverse roots to lie inside the unit circle:</p>
-<div id="23ea4be9" class="cell" data-execution_count="5">
+<div id="83395334" class="cell" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">&quot;Inverse AR roots:&quot;</span>, diagnostics[<span class="st">&quot;inverse_ar_roots&quot;</span>])</span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">&quot;Inverse MA roots:&quot;</span>, diagnostics[<span class="st">&quot;inverse_ma_roots&quot;</span>])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
@@ -2482,9 +2482,9 @@ Inverse MA roots: [-0.5-0.j]</code></pre>
 <section id="inverse-root-plot" class="level3">
 <h3 class="anchored" data-anchor-id="inverse-root-plot">Inverse-Root Plot</h3>
 <p>The inverse roots can also be represented in the complex plane. Causality and invertibility require the corresponding inverse roots to lie inside the unit circle.</p>
-<div id="205512c9" class="cell" data-execution_count="6">
+<div id="d5ccfba0" class="cell" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>arma.plot_arma_inverse_roots(ar<span class="op">=</span>ar, ma<span class="op">=</span>ma)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="29">
+<div class="cell-output cell-output-display" data-execution_count="19">
 <pre><code>(&lt;Figure size 624x624 with 1 Axes&gt;,
  &lt;Axes: title={&#39;center&#39;: &#39;Inverse Roots of AR and MA Polynomials&#39;}, xlabel=&#39;Real part&#39;, ylabel=&#39;Imaginary part&#39;&gt;)</code></pre>
 </div>
@@ -2506,12 +2506,12 @@ Inverse MA roots: [-0.5-0.j]</code></pre>
 y_t = 0.6y_{t-1}+\varepsilon_t-0.6\varepsilon_{t-1}.
 \]</span></p>
 <p>The corresponding coefficients are:</p>
-<div id="20d8f098" class="cell" data-execution_count="7">
+<div id="2e984d16" class="cell" data-execution_count="7">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>ar_common <span class="op">=</span> [<span class="fl">0.6</span>]</span>
 <span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>ma_common <span class="op">=</span> [<span class="op">-</span><span class="fl">0.6</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 <p>We can check for common roots using <code>arma.arma_diagnostics()</code>:</p>
-<div id="4290d0f3" class="cell" data-execution_count="8">
+<div id="e3bfd832" class="cell" data-execution_count="8">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>diagnostics_common <span class="op">=</span> arma.arma_diagnostics(</span>
 <span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>    ar<span class="op">=</span>ar_common,</span>
 <span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>    ma<span class="op">=</span>ma_common</span>
@@ -2528,12 +2528,12 @@ Common root pairs: [{&#39;ar_index&#39;: 0, &#39;ma_index&#39;: 0, &#39;ar_root&
 </div>
 <p>In this example the AR and MA polynomials contain the same factor. The ARMA(1,1) specification is therefore not a minimal representation.</p>
 <p>The common root can also be seen in the inverse-root plot:</p>
-<div id="e3b74a7a" class="cell" data-execution_count="9">
+<div id="3ac82635" class="cell" data-execution_count="9">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>arma.plot_arma_inverse_roots(</span>
 <span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>    ar<span class="op">=</span>ar_common,</span>
 <span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>    ma<span class="op">=</span>ma_common</span>
 <span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="32">
+<div class="cell-output cell-output-display" data-execution_count="22">
 <pre><code>(&lt;Figure size 624x624 with 1 Axes&gt;,
  &lt;Axes: title={&#39;center&#39;: &#39;Inverse Roots of AR and MA Polynomials&#39;}, xlabel=&#39;Real part&#39;, ylabel=&#39;Imaginary part&#39;&gt;)</code></pre>
 </div>
@@ -2555,7 +2555,7 @@ y_t = \psi(L)\varepsilon_t
 = \sum_{j=0}^{\infty}\psi_j\varepsilon_{t-j}.
 \]</span></p>
 <p>The first <span class="math inline">\(\psi\)</span>-weights of the ARMA(2,1) model can be computed with:</p>
-<div id="e34a07c1" class="cell" data-execution_count="10">
+<div id="e4b93202" class="cell" data-execution_count="10">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>psi <span class="op">=</span> arma.arma_psi_weights(</span>
 <span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>    ar<span class="op">=</span>ar,</span>
 <span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>    ma<span class="op">=</span>ma,</span>
@@ -2563,7 +2563,7 @@ y_t = \psi(L)\varepsilon_t
 <span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>)</span>
 <span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>psi</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="33">
+<div class="cell-output cell-output-display" data-execution_count="23">
 <pre><code>array([ 1.000000e+00,  1.100000e+00,  4.600000e-01,  5.600000e-02,
        -5.840000e-02, -4.624000e-02, -1.606400e-02, -3.904000e-04,
         2.978560e-03,  1.865216e-03])</code></pre>
@@ -2573,7 +2573,7 @@ y_t = \psi(L)\varepsilon_t
 <section id="cumulative-and-long-run-responses" class="level3">
 <h3 class="anchored" data-anchor-id="cumulative-and-long-run-responses">Cumulative and Long-Run Responses</h3>
 <p><code>arma.arma_dynamics()</code> combines the <span class="math inline">\(\psi\)</span>-weights with their cumulative response and, when the model is causal, computes the long-run response.</p>
-<div id="4b5a315d" class="cell" data-execution_count="11">
+<div id="6ec49767" class="cell" data-execution_count="11">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>dynamics <span class="op">=</span> arma.arma_dynamics(</span>
 <span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>    ar<span class="op">=</span>ar,</span>
 <span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>    ma<span class="op">=</span>ma,</span>
@@ -2631,7 +2631,7 @@ Analysis horizon ......... 20
 <section id="dynamic-and-cumulative-response-plots" class="level3">
 <h3 class="anchored" data-anchor-id="dynamic-and-cumulative-response-plots">Dynamic and Cumulative Response Plots</h3>
 <p>The dynamic response to a unit innovation can be visualized directly:</p>
-<div id="fc62ddd0" class="cell" data-execution_count="12">
+<div id="6de0c7bf" class="cell" data-execution_count="12">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>fig, ax <span class="op">=</span> arma.plot_arma_dynamic_response(</span>
 <span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>    ar<span class="op">=</span>ar,</span>
 <span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>    ma<span class="op">=</span>ma,</span>
@@ -2647,7 +2647,7 @@ Analysis horizon ......... 20
 </div>
 <p>The graph shows the sequence of <span class="math inline">\(\psi\)</span>-weights and therefore how the effect of a unit innovation evolves over time.</p>
 <p>The corresponding cumulative response is:</p>
-<div id="64ae7c8e" class="cell" data-execution_count="13">
+<div id="9e836319" class="cell" data-execution_count="13">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>fig, ax <span class="op">=</span> arma.plot_arma_cumulative_response(</span>
 <span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>    ar<span class="op">=</span>ar,</span>
 <span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>    ma<span class="op">=</span>ma,</span>
