@@ -217,7 +217,4 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Manual qmd files
-ARMA_Theory_Examples.html
-ARMA_Theory_Examples_files/
 

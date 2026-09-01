@@ -4,41 +4,243 @@ author: "Miguel A. Arranz"
 format:
   html:
     toc: true
+    embed-resources: true
 jupyter: python3
 ---
 
+
 ## Introduction
 
-This document provides examples of the main theoretical tools available in **ARMA Theory**.
+**ARMA Theory** is an educational Python library for exploring the theoretical properties of autoregressive moving-average (ARMA) models from user-specified AR and MA coefficients.
 
-The library works with user-specified AR and MA coefficients and studies the population properties implied by those coefficients.
+This document illustrates the main tools provided by the library. The examples focus on the relationship between the coefficients of an ARMA model and its theoretical properties, including causality, invertibility, autocorrelation, dynamic responses to innovations, and long-run responses.
+
+The library does not estimate ARMA models from data. All the examples in this document therefore start from specified population parameters.
+
 
 ## Setup
+
+The examples assume that the repository has been cloned and the `arma_theory` environment has been created and activated. See the project README for installation instructions.
+
+The library can then be imported directly from the repository directory:
 
 ```{python}
 import arma_theory as arma
 ```
 
-## A first ARMA model
+All functions in the examples below are called through the `arma` namespace, for example `arma.arma_diagnostics()`, `arma.arma_acf()`, and `arma.arma_dynamics()`.
 
-Consider an ARMA(1,1) model with
+
+## Model Convention
+
+ARMA Theory uses the convention
 
 $$
-y_t = 0.8y_{t-1} + \varepsilon_t + 0.5\varepsilon_{t-1}.
+y_t
+=
+\varphi_1 y_{t-1}+\cdots+\varphi_p y_{t-p}
++\varepsilon_t
++\theta_1\varepsilon_{t-1}+\cdots+\theta_q\varepsilon_{t-q},
 $$
 
-The corresponding Python coefficients are:
+or equivalently,
 
-```{python}
-ar = [0.8]
+$$
+\varphi(L)y_t=\theta(L)\varepsilon_t,
+$$
+
+where
+
+$$
+\varphi(L)=1-\varphi_1L-\cdots-\varphi_pL^p,
+\qquad
+\theta(L)=1+\theta_1L+\cdots+\theta_qL^q.
+$$
+
+The coefficients supplied to Python follow these signs directly. For example,
+
+```{python} 
+ar = [0.6, -0.2]
 ma = [0.5]
 ```
 
-We can examine the basic polynomial diagnostics:
+specifies the ARMA(2,1) model
+
+$$
+y_t=0.6y_{t-1}-0.2y_{t-2}
++\varepsilon_t+0.5\varepsilon_{t-1}.
+$$
+
+Use an empty list when a component is absent: `ar=[]` for a pure MA model and `ma=[]` for a pure AR model.
+
+
+## Polynomial Diagnostics
+
+The properties of an ARMA model depend on the roots of its AR and MA polynomials. `arma.arma_diagnostics()` computes these roots and uses them to assess causality, stationarity, invertibility, and possible common roots.
+
+We continue with the ARMA(2,1) model defined above:
 
 ```{python}
 diagnostics = arma.arma_diagnostics(ar=ar, ma=ma)
 
 print("Causal:", diagnostics["causal"])
 print("Invertible:", diagnostics["invertible"])
+print("Minimal representation:", diagnostics["minimal_representation"])
 ```
+
+The model is causal when all roots of the AR polynomial lie outside the unit circle and invertible when all roots of the MA polynomial lie outside the unit circle.
+
+
+### Polynomial Roots
+
+The AR and MA roots can be examined directly:
+
+```{python}
+print("AR roots:", diagnostics["ar_roots"])
+print("MA roots:", diagnostics["ma_roots"])
+```
+
+It is often more intuitive to examine the **inverse roots**, since causality and invertibility then require the corresponding inverse roots to lie inside the unit circle:
+
+```{python}
+print("Inverse AR roots:", diagnostics["inverse_ar_roots"])
+print("Inverse MA roots:", diagnostics["inverse_ma_roots"])
+```
+
+### Inverse-Root Plot
+
+The inverse roots can also be represented in the complex plane. Causality and invertibility require the corresponding inverse roots to lie inside the unit circle.
+
+```{python}
+arma.plot_arma_inverse_roots(ar=ar, ma=ma)
+```
+
+AR and MA inverse roots are shown separately, while the unit circle provides the reference for assessing causality and invertibility.
+
+
+
+### Common Roots and Minimal Representations
+
+An ARMA specification is not a minimal representation when the AR and MA polynomials have a common root.
+
+Consider
+
+$$
+y_t = 0.6y_{t-1}+\varepsilon_t-0.6\varepsilon_{t-1}.
+$$
+
+The corresponding coefficients are:
+
+```{python}
+ar_common = [0.6]
+ma_common = [-0.6]
+```
+
+We can check for common roots using `arma.arma_diagnostics()`:
+
+```{python}
+diagnostics_common = arma.arma_diagnostics(
+    ar=ar_common,
+    ma=ma_common
+)
+
+print("Common roots:", diagnostics_common["common_roots"])
+print("Minimal representation:", diagnostics_common["minimal_representation"])
+print("Common root pairs:", diagnostics_common["common_root_pairs"])
+```
+
+In this example the AR and MA polynomials contain the same factor. The ARMA(1,1) specification is therefore not a minimal representation.
+
+The common root can also be seen in the inverse-root plot:
+
+```{python}
+arma.plot_arma_inverse_roots(
+    ar=ar_common,
+    ma=ma_common
+)
+```
+
+## Dynamic Responses
+
+For a causal ARMA model, the effect of an innovation can be represented through its $\psi$-weights,
+
+$$
+y_t = \psi(L)\varepsilon_t
+= \sum_{j=0}^{\infty}\psi_j\varepsilon_{t-j}.
+$$
+
+The first $\psi$-weights of the ARMA(2,1) model can be computed with:
+
+```{python}
+psi = arma.arma_psi_weights(
+    ar=ar,
+    ma=ma,
+    n_terms=10
+)
+
+psi
+```
+
+The coefficient $\psi_j$ measures the effect at horizon $j$ of a unit innovation in $\varepsilon_t$.
+
+### Cumulative and Long-Run Responses
+
+`arma.arma_dynamics()` combines the $\psi$-weights with their cumulative response and, when the model is causal, computes the long-run response.
+
+```{python} 
+dynamics = arma.arma_dynamics(
+    ar=ar,
+    ma=ma,
+    horizon=20
+)
+
+arma.arma_summary(dynamics)
+```
+
+The cumulative response at horizon $j$ is
+
+$$
+\sum_{i=0}^{j}\psi_i.
+$$
+
+For a causal ARMA model, the long-run response to a unit innovation is
+
+$$
+\sum_{j=0}^{\infty}\psi_j
+=
+\frac{\theta(1)}{\varphi(1)}
+=
+\frac{1+\sum_{j=1}^{q}\theta_j}
+     {1-\sum_{i=1}^{p}\varphi_i}.
+$$
+
+The cumulative response therefore approaches the long-run response as the horizon increases.
+
+
+### Dynamic and Cumulative Response Plots
+
+The dynamic response to a unit innovation can be visualized directly:
+
+```{python}
+fig, ax = arma.plot_arma_dynamic_response(
+    ar=ar,
+    ma=ma,
+    horizon=20
+)
+```
+
+The graph shows the sequence of $\psi$-weights and therefore how the effect of a unit innovation evolves over time.
+
+The corresponding cumulative response is:
+
+```{python}
+fig, ax = arma.plot_arma_cumulative_response(
+    ar=ar,
+    ma=ma,
+    horizon=20
+)
+```
+
+For a causal model, the cumulative-response plot also shows the analytical long-run response, making it possible to see how quickly the cumulative effects approach their limiting value.
+
+
